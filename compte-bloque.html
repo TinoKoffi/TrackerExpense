@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Compte bloqué — MonTracker</title>
+  <link rel="stylesheet" href="new.css">
+</head>
+<body>
+  <main class="welcome-center">
+    <div class="welcome-card blocked-card">
+      <!-- modale de confirmation -->
+      <div id="modal" class="modal" style="display:none;">
+        <div class="modal-card">
+          <p id="modal-msg">Confirmer ?</p>
+          <div class="modal-actions">
+            <button id="modal-confirm" class="btn-primary">Confirmer</button>
+            <button id="modal-cancel" class="btn-secondary">Annuler</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- toast (notification) -->
+      <div id="toast" class="toast" style="display:none;"></div>
+      <div class="logo-icon">🔒</div>
+      <h1>Compte bloqué</h1>
+      <p id="subtitle">Gère tes fonds bloqués avant leur date de disponibilité.</p>
+
+      <div class="blocked-summary">
+        <h3>Solde bloqué : <span id="blocked-total">0 FCFA</span></h3>
+      </div>
+
+      <div class="blocked-actions">
+        <div id="controls" style="display:flex;gap:10px;justify-content:center;">
+          <button id="btn-show-add" class="btn-primary">Ajouter</button>
+          <button id="btn-show-withdraw" class="btn-secondary">Retirer</button>
+        </div>
+
+        <!-- formulaire d'ajout (caché par défaut) -->
+        <div id="add-form" style="display:none;margin-top:12px;">
+          <form id="add-blocked-form" class="form-inline">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center;">
+              <input id="blk-desc" type="text" placeholder="Description" required style="padding:10px;border-radius:8px;border:1px solid var(--border);" />
+              <input id="blk-amount" type="number" min="1" placeholder="Montant" required style="padding:10px;border-radius:8px;border:1px solid var(--border);width:110px;" />
+              <input id="blk-date" type="date" required style="padding:10px;border-radius:8px;border:1px solid var(--border);" />
+              <button class="btn-primary" type="submit">Confirmer</button>
+              <button type="button" id="btn-cancel-add" class="btn-secondary">Annuler</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- formulaire de retrait (caché par défaut) -->
+        <div id="withdraw-wrap" style="display:none;margin-top:12px;">
+          <div id="withdraw-list"></div>
+          <div style="margin-top:8px;"><button id="btn-cancel-withdraw" class="btn-secondary">Annuler</button></div>
+        </div>
+      </div>
+
+      <div class="blocked-list-wrap">
+        <h3>Entrées bloquées</h3>
+        <ul id="blocked-list" class="blocked-list"></ul>
+      </div>
+
+      <div class="welcome-actions" style="margin-top:18px;">
+        <a class="btn-primary" href="welcome.html">← Retour</a>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // fonctions utilitaires minimales (isolées de `new.js`)
+    const USERS_KEY = 'mt_users';
+    const SESSION_KEY = 'mt_session';
+
+    function getUsers(){ return JSON.parse(localStorage.getItem(USERS_KEY)) || {}; }
+    function saveUsers(u){ localStorage.setItem(USERS_KEY, JSON.stringify(u)); }
+    function getSession(){ return localStorage.getItem(SESSION_KEY); }
+    function formatCurrency(n){ return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 }).format(n); }
+
+    /* Helpers : Toast et Modale */
+    function showToast(type, msg, timeout = 3000) {
+      const t = document.getElementById('toast');
+      t.className = 'toast ' + (type || 'info');
+      t.textContent = msg;
+      t.style.display = 'block';
+      clearTimeout(t._timer);
+      t._timer = setTimeout(()=>{ t.style.display = 'none'; }, timeout);
+    }
+
+    function showConfirm(msg, onConfirm) {
+      const modal = document.getElementById('modal');
+      const msgEl = document.getElementById('modal-msg');
+      const btnOk = document.getElementById('modal-confirm');
+      const btnCancel = document.getElementById('modal-cancel');
+      msgEl.textContent = msg;
+      modal.style.display = 'flex';
+      function cleanup(){ modal.style.display = 'none'; btnOk.removeEventListener('click', ok); btnCancel.removeEventListener('click', cancel); }
+      function ok(){ cleanup(); if (typeof onConfirm === 'function') onConfirm(); }
+      function cancel(){ cleanup(); }
+      btnOk.addEventListener('click', ok);
+      btnCancel.addEventListener('click', cancel);
+    }
+
+    const session = getSession();
+    const users = getUsers();
+    if (!session || !users[session]) {
+      window.location.href = 'new.html';
+    }
+
+    // assurer la structure des données
+    if (!users[session].blocked) users[session].blocked = [];
+    if (!users[session].transactions) users[session].transactions = [];
+
+    const blockedListEl = document.getElementById('blocked-list');
+    const blockedTotalEl = document.getElementById('blocked-total');
+
+    function computeBlockedTotal(){
+      const total = users[session].blocked.filter(b=>!b.withdrawn).reduce((s,b)=>s + Number(b.amount), 0);
+      blockedTotalEl.textContent = formatCurrency(total);
+    }
+
+    function renderBlocked(){
+      blockedListEl.innerHTML = '';
+      const items = users[session].blocked.slice().reverse();
+      if (items.length === 0) {
+        blockedListEl.innerHTML = '<li class="empty-state">Aucune entrée bloquée.</li>';
+        computeBlockedTotal();
+        return;
+      }
+
+      const today = new Date();
+      items.forEach(b => {
+        const li = document.createElement('li');
+        li.className = 'transaction ' + (b.withdrawn ? 'expense' : 'income');
+        const unlock = new Date(b.unlockDate + 'T00:00:00');
+        const available = !b.withdrawn && unlock <= new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+        li.innerHTML = `
+          <div>
+            <div class="t-desc">${b.description}</div>
+            <div class="t-date">Disponible le: ${new Date(b.unlockDate).toLocaleDateString('fr-FR')}</div>
+          </div>
+          <div class="t-right">
+            <span class="t-amount">${formatCurrency(Number(b.amount))}</span>
+            ${b.withdrawn ? '<span style="color:var(--text-muted);font-weight:700;margin-left:8px;">Retiré</span>' : `<span style="color:var(--text-muted);font-weight:700;margin-left:8px;">Bloqué</span>`}
+            <button class="delete-btn" onclick="removeBlocked(${b.id})" title="Supprimer">✕</button>
+          </div>
+        `;
+        blockedListEl.appendChild(li);
+      });
+      computeBlockedTotal();
+    }
+
+    // afficher la liste des entrées déblocable pour le formulaire de retrait
+    function renderWithdrawable(){
+      const wrap = document.getElementById('withdraw-list');
+      wrap.innerHTML = '';
+      const today = new Date();
+      const todayNoTime = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const avail = users[session].blocked.filter(b => !b.withdrawn && new Date(b.unlockDate + 'T00:00:00') <= todayNoTime);
+      if (avail.length === 0) {
+        wrap.innerHTML = '<div class="empty-state">Aucune somme disponible pour retrait.</div>';
+        return;
+      }
+      const ul = document.createElement('ul'); ul.className = 'blocked-list';
+      avail.slice().reverse().forEach(b => {
+        const li = document.createElement('li');
+        li.className = 'transaction income';
+        li.innerHTML = `
+          <div>
+            <div class="t-desc">${b.description}</div>
+            <div class="t-date">Disponible le: ${new Date(b.unlockDate).toLocaleDateString('fr-FR')}</div>
+          </div>
+          <div class="t-right">
+            <span class="t-amount">${formatCurrency(Number(b.amount))}</span>
+            <button class="btn-primary" onclick="openWithdrawForm(${b.id})">Retirer</button>
+          </div>
+        `;
+        ul.appendChild(li);
+      });
+      wrap.appendChild(ul);
+    }
+
+    // rendre la fonction de retrait accessible globalement (pour les onclick inline)
+    window.withdrawBlocked = function(id){
+        // fallback : retrait du montant total (conservé pour compatibilité)
+      const idx = users[session].blocked.findIndex(b=>b.id===id);
+      if (idx === -1) { showToast('error','Entrée introuvable'); return; }
+      const entry = users[session].blocked[idx];
+      const unlock = new Date(entry.unlockDate + 'T00:00:00');
+      const today = new Date();
+      const todayNoTime = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      if (unlock > todayNoTime) { showToast('error','La date de retrait n\'est pas encore atteinte.'); return; }
+
+      users[session].transactions = users[session].transactions || [];
+      users[session].transactions.push({ id: Date.now(), description: entry.description + ' (débloqué)', amount: Number(entry.amount), date: new Date().toLocaleDateString('fr-FR') });
+      users[session].blocked[idx].withdrawn = true;
+      saveUsers(users);
+      renderBlocked();
+      showInitialView();
+      showToast('success','Montant débloqué et ajouté à ton budget.');
+    };
+
+    // supprimer une entrée bloquée (utilise la modale de confirmation)
+    window.removeBlocked = function(id){
+      showConfirm('Supprimer cette entrée bloquée ?', function(){
+        const idx = users[session].blocked.findIndex(b=>b.id===id);
+        if (idx === -1) { showToast('error','Entrée introuvable'); return; }
+        users[session].blocked.splice(idx,1);
+        saveUsers(users);
+        showToast('success','Entrée supprimée');
+        showInitialView();
+      });
+    };
+    // afficher/masquer les vues (contrôles, formulaires)
+    const btnShowAdd = document.getElementById('btn-show-add');
+    const btnShowWithdraw = document.getElementById('btn-show-withdraw');
+    const addFormWrap = document.getElementById('add-form');
+    const withdrawWrap = document.getElementById('withdraw-wrap');
+
+    function showInitialView(){
+      addFormWrap.style.display = 'none';
+      withdrawWrap.style.display = 'none';
+      // show controls according to existence
+      const hasAny = users[session].blocked && users[session].blocked.some(b=>!b.withdrawn);
+      document.getElementById('controls').style.display = 'flex';
+      // show withdraw button only if there is at least one blocked entry
+      btnShowWithdraw.style.display = hasAny ? 'inline-block' : 'none';
+      renderBlocked();
+    }
+
+    function showAddForm(){
+      document.getElementById('controls').style.display = 'none';
+      addFormWrap.style.display = 'block';
+      withdrawWrap.style.display = 'none';
+    }
+
+    function showWithdrawForm(){
+      document.getElementById('controls').style.display = 'none';
+      addFormWrap.style.display = 'none';
+      withdrawWrap.style.display = 'block';
+      renderWithdrawable();
+    }
+
+    // gestion du formulaire d'ajout
+    document.getElementById('add-blocked-form').addEventListener('submit', function(e){
+      e.preventDefault();
+      const desc = document.getElementById('blk-desc').value.trim() || 'Blocage';
+      const amount = Number(document.getElementById('blk-amount').value);
+      const date = document.getElementById('blk-date').value;
+      if (!amount || amount <= 0) { showToast('error','Montant invalide'); return; }
+      if (!date) { showToast('error','Choisis une date de disponibilité'); return; }
+
+      users[session].blocked.push({ id: Date.now(), description: desc, amount: amount, unlockDate: date, createdAt: new Date().toISOString(), withdrawn: false });
+      saveUsers(users);
+      document.getElementById('blk-desc').value = '';
+      document.getElementById('blk-amount').value = '';
+      document.getElementById('blk-date').value = '';
+      // revenir à l'état initial (contrôles)
+      showInitialView();
+    });
+
+    document.getElementById('btn-cancel-add').addEventListener('click', showInitialView);
+    document.getElementById('btn-cancel-withdraw').addEventListener('click', showInitialView);
+
+    btnShowAdd.addEventListener('click', showAddForm);
+    btnShowWithdraw.addEventListener('click', showWithdrawForm);
+
+    // logique de la vue initiale : s'il n'y a aucune entrée bloquée, n'afficher que 'Ajouter'
+    (function initView(){
+      const hasAny = users[session].blocked && users[session].blocked.some(b=>!b.withdrawn);
+      if (!hasAny) {
+        // only show Ajouter button
+        document.getElementById('controls').style.display = 'flex';
+        btnShowWithdraw.style.display = 'none';
+      }
+      renderBlocked();
+    })();
+
+    // ouvrir le formulaire de retrait inline pour une entrée bloquée (utilisé dans la liste de retrait)
+    window.openWithdrawForm = function(id){
+      const wrap = document.getElementById('withdraw-list');
+      const btn = wrap.querySelector(`button[onclick="openWithdrawForm(${id})"]`);
+      if (!btn) return;
+      const li = btn.closest('li');
+      if (!li) return;
+      const entry = users[session].blocked.find(b=>b.id===id);
+      if (!entry) { showToast('error','Entrée introuvable'); return; }
+      const max = Number(entry.amount);
+      li.innerHTML = `
+        <div>
+          <div class="t-desc">${entry.description}</div>
+          <div class="t-date">Disponible le: ${new Date(entry.unlockDate).toLocaleDateString('fr-FR')}</div>
+        </div>
+        <div class="t-right" style="display:flex;gap:8px;align-items:center;">
+          <input id="withdraw-amt-${id}" type="number" min="1" max="${max}" value="${max}" style="width:110px;padding:8px;border-radius:8px;border:1px solid var(--border);" />
+          <button class="btn-primary" onclick="confirmWithdraw(${id})">Confirmer</button>
+          <button class="btn-secondary" onclick="renderWithdrawable()">Annuler</button>
+        </div>
+      `;
+    };
+
+    // confirmer le retrait d'un montant spécifié pour une entrée bloquée
+    window.confirmWithdraw = function(id){
+      const input = document.getElementById('withdraw-amt-'+id);
+      if (!input) { showToast('error','Champ montant introuvable'); return; }
+      const amt = Number(input.value);
+      if (!amt || amt <= 0) { showToast('error','Montant invalide'); return; }
+      const idx = users[session].blocked.findIndex(b=>b.id===id);
+      if (idx === -1) { showToast('error','Entrée introuvable'); return; }
+      const entry = users[session].blocked[idx];
+      const available = Number(entry.amount);
+      if (amt > available) { showToast('error','Montant demandé supérieur au montant bloqué'); return; }
+
+      users[session].transactions = users[session].transactions || [];
+      users[session].transactions.push({ id: Date.now(), description: entry.description + ' (partiellement débloqué)', amount: Number(amt), date: new Date().toLocaleDateString('fr-FR') });
+
+      if (amt === available) {
+        users[session].blocked[idx].withdrawn = true;
+      } else {
+        users[session].blocked[idx].amount = available - amt;
+      }
+      saveUsers(users);
+      renderBlocked();
+      showInitialView();
+      showToast('success','Retrait effectué');
+    };
+  </script>
+</body>
+</html>

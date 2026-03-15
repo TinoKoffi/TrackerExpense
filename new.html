@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MonTracker – Suivi de dépenses</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="new.css">
+</head>
+<body>
+
+<!-- ====== ÉCRAN D'AUTHENTIFICATION ====== -->
+<div id="auth-screen">
+  <div class="auth-logo">
+    <div class="logo-icon">💰</div>
+    <h1>MonTracker</h1>
+    <p>Suivi de dépenses personnel</p>
+  </div>
+
+  <div class="auth-card">
+    <div class="auth-tabs">
+      <button class="auth-tab active" onclick="switchTab('login')">Connexion</button>
+      <button class="auth-tab" onclick="switchTab('register')">Inscription</button>
+    </div>
+
+    <!-- CONNEXION -->
+    <div class="auth-form active" id="login-form">
+      <h2>Bon retour 👋</h2>
+      <p class="subtitle">Connecte-toi pour accéder à tes données</p>
+      <div class="auth-error" id="login-error"></div>
+      <div class="field">
+        <label>Nom d'utilisateur</label>
+        <input type="text" id="login-username" placeholder="Ton pseudo..." autocomplete="username" />
+      </div>
+      <div class="field">
+        <label>Mot de passe</label>
+        <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" />
+      </div>
+      <button class="btn-primary" onclick="handleLogin()">Se connecter →</button>
+    </div>
+
+    <!-- INSCRIPTION -->
+    <div class="auth-form" id="register-form">
+      <h2>Créer un compte</h2>
+      <p class="subtitle">Gratuit et privé — tes données restent sur ton appareil</p>
+      <div class="auth-error" id="register-error"></div>
+      <div class="auth-success" id="register-success"></div>
+      <div class="field">
+        <label>Nom d'utilisateur</label>
+        <input type="text" id="reg-username" placeholder="Choisis un pseudo..." autocomplete="username" />
+      </div>
+      <div class="field">
+        <label>Mot de passe</label>
+        <input type="password" id="reg-password" placeholder="Minimum 4 caractères..." autocomplete="new-password" />
+      </div>
+      <div class="field">
+        <label>Confirmer le mot de passe</label>
+        <input type="password" id="reg-confirm" placeholder="Répète ton mot de passe..." autocomplete="new-password" />
+      </div>
+      <button class="btn-primary" onclick="handleRegister()">Créer mon compte →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ====== ÉCRAN DE L'APPLICATION ====== -->
+<div id="app-screen">
+  <div class="app-header">
+    <div class="app-header-left">
+      <div class="logo-mini">💰</div>
+      <h1>JeGereMonBudget</h1>
+    </div>
+    <div class="user-info">
+      <div class="user-badge">Connecté : <span id="current-username"></span></div>
+      <button class="btn-back" onclick="goBackToWelcome()">← Retour</button>
+      <button class="btn-logout" onclick="handleLogout()">Déconnexion</button>
+    </div>
+  </div>
+
+  <!-- CONTENU PRINCIPAL DE L'APPLICATION -->
+
+  <div class="container">
+    <div class="balance-container">
+      <h2>Solde total</h2>
+      <div class="balance-amount" id="balance">0 FCFA</div>
+      <div class="summary">
+        <div class="income-box">
+          <h3>Revenus</h3>
+          <p id="income-amount">0 FCFA</p>
+        </div>
+        <div class="expense-box">
+          <h3>Dépenses</h3>
+          <p id="expense-amount">0 FCFA</p>
+        </div>
+      </div>
+    </div>
+    
+
+    <!-- CONTENU PRINCIPAL -->
+    <div class="main-content">
+      <div class="transaction-container">
+        <h2>Historique</h2>
+        <ul id="transaction-list"></ul>
+      </div>
+
+      <div class="form-container">
+        <h2>Ajouter une transaction</h2>
+
+        <div class="type-toggle">
+          <button class="type-btn income active" id="btn-income" onclick="setType('income')">+ Revenu</button>
+          <button class="type-btn expense " id="btn-expense" onclick="setType('expense')">− Dépense</button>
+        </div>
+
+        <form id="transaction-form">
+          <div class="form-group">
+            <label>Description</label>
+            <input type="text" id="description" placeholder="Ex: Salaire, Courses..." required />
+          </div>
+          <div class="form-group">
+            <label>Montant</label>
+            <input type="number" id="amount" placeholder="0" min="0" step="1" required />
+            <small>Entre le montant (toujours positif)</small>
+          </div>
+          <button type="submit" class="btn-primary">Ajouter →</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="new.js"></script>
+</body>
+</html>

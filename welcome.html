@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bienvenue — MonTracker</title>
+  <link rel="stylesheet" href="new.css">
+</head>
+<body>
+  <main class="welcome-center">
+    <div class="welcome-card">
+      <div class="logo-icon">💰</div>
+      <h1>Bienvenue</h1>
+      <p id="welcome-sub">Chargement...</p>
+
+      <div class="welcome-actions">
+        <a class="btn-primary" id="btn-budget" href="new.html?from=welcome">Voir mon budget →</a>
+        <a class="btn-secondary" id="btn-bloque" href="compte-bloque.html">Voir mon compte bloqué →</a>
+      </div>
+
+      <div class="welcome-foot">
+        <button id="btn-logout" class="btn-link">Se déconnecter</button>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const SESSION_KEY = 'mt_session';
+    const USERS_KEY = 'mt_users';
+
+    function getUsers(){ return JSON.parse(localStorage.getItem(USERS_KEY)) || {}; }
+    function getSession(){ return localStorage.getItem(SESSION_KEY); }
+    function clearSession(){ localStorage.removeItem(SESSION_KEY); }
+
+    const session = getSession();
+    const users = getUsers();
+    const welcomeSub = document.getElementById('welcome-sub');
+    if (!session || !users[session]) {
+      // pas connecté : renvoyer vers la page de connexion
+      window.location.href = 'new.html';
+    } else {
+      welcomeSub.textContent = `Connecté en tant que ${session}`;
+    }
+
+    document.getElementById('btn-logout').addEventListener('click', () => {
+      clearSession();
+      window.location.href = 'new.html';
+    });
+  </script>
+</body>
+</html>
